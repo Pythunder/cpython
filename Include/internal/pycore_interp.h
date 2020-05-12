@@ -60,8 +60,15 @@ struct _Py_unicode_fs_codec {
     _Py_error_handler error_handler;
 };
 
+struct _Py_unicode_ids {
+    Py_ssize_t size;
+    PyObject **array;
+};
+
 struct _Py_unicode_state {
     struct _Py_unicode_fs_codec fs_codec;
+    // Unicode identifiers (_Py_Identifier): see _PyUnicode_FromId()
+    struct _Py_unicode_ids ids;
 };
 
 /* Speed optimization to avoid frequent malloc/free of small tuples */

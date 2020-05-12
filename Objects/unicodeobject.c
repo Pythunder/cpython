@@ -285,9 +285,6 @@ unicode_decode_utf8(const char *s, Py_ssize_t size,
                     _Py_error_handler error_handler, const char *errors,
                     Py_ssize_t *consumed);
 
-/* List of static strings. */
-static _Py_Identifier *static_strings = NULL;
-
 /* bpo-40521: Latin1 singletons are shared by all interpreters. */
 #ifndef EXPERIMENTAL_ISOLATED_SUBINTERPRETERS
 #  define LATIN1_SINGLETONS
@@ -2272,40 +2269,85 @@ PyUnicode_FromString(const char *u)
     return PyUnicode_DecodeUTF8Stateful(u, (Py_ssize_t)size, NULL, NULL);
 }
 
+
 PyObject *
 _PyUnicode_FromId(_Py_Identifier *id)
 {
-    if (id->object) {
-        return id->object;
+    PyInterpreterState *interp = _PyInterpreterState_GET();
+    struct _Py_unicode_ids *ids = &interp->unicode.ids;
+
+    // Copy the index since _Py_Identifier.index is declared as volatile
+    Py_ssize_t index = id->index;
+    if (index < 0) {
+        struct _Py_unicode_runtime_ids *rt_ids = &interp->runtime->unicode_ids;
+
+        PyThread_acquire_lock(rt_ids->lock, WAIT_LOCK);
+        // Check again to detect concurrent access. Another thread can have
+        // initialized the index while this thread waited for the lock.
+        //
+        // _Py_Identifier.index is declared with volatile keyword to ensure
+        // that the index is read again here (prevent compiler optimization).
+        // Use volatile instead of an atomic variable since pycore_atomic.h is
+        // an internal header file, and stdatomic.h is not yet widely adopted.
+        if (id->index < 0) {
+            id->index = rt_ids->next_index;
+            rt_ids->next_index++;
+        }
+        PyThread_release_lock(rt_ids->lock);
+        index = id->index;
     }
+    assert(index >= 0);
 
     PyObject *obj;
-    obj = PyUnicode_DecodeUTF8Stateful(id->string,
-                                       strlen(id->string),
+    if (index < ids->size) {
+        obj = ids->array[index];
+        if (obj) {
+            // Return a borrowed reference
+            return obj;
+        }
+    }
+
+    obj = PyUnicode_DecodeUTF8Stateful(id->string, strlen(id->string),
                                        NULL, NULL);
     if (!obj) {
         return NULL;
     }
     PyUnicode_InternInPlace(&obj);
 
-    assert(!id->next);
-    id->object = obj;
-    id->next = static_strings;
-    static_strings = id;
-    return id->object;
+    if (index >= ids->size) {
+        // Overallocate to reduce the number of realloc
+        Py_ssize_t new_size = Py_MAX(index * 2, 16);
+        Py_ssize_t item_size = sizeof(ids->array[0]);
+        PyObject **new_array = PyMem_Realloc(ids->array, new_size * item_size);
+        if (new_array == NULL) {
+            PyErr_NoMemory();
+            return NULL;
+        }
+        memset(&new_array[ids->size], 0, (new_size - ids->size) * item_size);
+        ids->array = new_array;
+        ids->size = new_size;
+    }
+
+    // The array stores a strong reference
+    ids->array[index] = obj;
+
+    // Return a borrowed reference
+    return obj;
 }
 
 static void
-unicode_clear_static_strings(void)
+unicode_clear_identifiers(PyThreadState *tstate)
 {
-    _Py_Identifier *tmp, *s = static_strings;
-    while (s) {
-        Py_CLEAR(s->object);
-        tmp = s->next;
-        s->next = NULL;
-        s = tmp;
+    PyInterpreterState *interp = _PyInterpreterState_GET();
+    struct _Py_unicode_ids *ids = &interp->unicode.ids;
+    for (Py_ssize_t i=0; i<ids->size; i++) {
+        Py_XDECREF(ids->array[i]);
     }
-    static_strings = NULL;
+    ids->size = 0;
+    PyMem_Free(ids->array);
+    ids->array = NULL;
+    // Don't reset _PyRuntime next_index: _Py_Identifier.id remains valid
+    // after Py_Finalize().
 }
 
 /* Internal function, doesn't check maximum character */
@@ -16204,7 +16246,7 @@ _PyUnicode_Fini(PyThreadState *tstate)
             Py_CLEAR(unicode_latin1[i]);
         }
 #endif
-        unicode_clear_static_strings();
+        unicode_clear_identifiers(tstate);
     }
 
     _PyUnicode_FiniEncodings(&tstate->interp->unicode.fs_codec);
