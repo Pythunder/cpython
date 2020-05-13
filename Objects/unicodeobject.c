@@ -198,23 +198,6 @@ extern "C" {
 #  define OVERALLOCATE_FACTOR 4
 #endif
 
-/* bpo-40521: Interned strings are shared by all interpreters. */
-#ifndef EXPERIMENTAL_ISOLATED_SUBINTERPRETERS
-#  define INTERNED_STRINGS
-#endif
-
-/* This dictionary holds all interned unicode strings.  Note that references
-   to strings in this dictionary are *not* counted in the string's ob_refcnt.
-   When the interned string reaches a refcnt of 0 the string deallocation
-   function will delete the reference from this dictionary.
-
-   Another way to look at this is that to say that the actual reference
-   count of a string is:  s->ob_refcnt + (s->state ? 2 : 0)
-*/
-#ifdef INTERNED_STRINGS
-static PyObject *interned = NULL;
-#endif
-
 /* The empty Unicode object is shared to improve performance. */
 static PyObject *unicode_empty = NULL;
 
@@ -1927,15 +1910,17 @@ unicode_dealloc(PyObject *unicode)
         break;
 
     case SSTATE_INTERNED_MORTAL:
+    {
+        PyInterpreterState *interp = _PyInterpreterState_GET();
+        PyObject *interned = interp->unicode.interned;
         /* revive dead object temporarily for DelItem */
         Py_SET_REFCNT(unicode, 3);
-#ifdef INTERNED_STRINGS
         if (PyDict_DelItem(interned, unicode) != 0) {
             _PyErr_WriteUnraisableMsg("deletion of interned string failed",
                                       NULL);
         }
-#endif
         break;
+    }
 
     case SSTATE_INTERNED_IMMORTAL:
         _PyObject_ASSERT_FAILED_MSG(unicode, "Immortal interned string died");
@@ -11336,12 +11321,11 @@ _PyUnicode_EqualToASCIIId(PyObject *left, _Py_Identifier *right)
     if (PyUnicode_CHECK_INTERNED(left))
         return 0;
 
-#ifdef INTERNED_STRINGS
     assert(_PyUnicode_HASH(right_uni) != -1);
     Py_hash_t hash = _PyUnicode_HASH(left);
-    if (hash != -1 && hash != _PyUnicode_HASH(right_uni))
+    if (hash != -1 && hash != _PyUnicode_HASH(right_uni)) {
         return 0;
-#endif
+    }
 
     return unicode_compare_eq(left, right_uni);
 }
@@ -15578,10 +15562,11 @@ PyUnicode_InternInPlace(PyObject **p)
         return;
     }
 
-#ifdef INTERNED_STRINGS
-    if (interned == NULL) {
-        interned = PyDict_New();
-        if (interned == NULL) {
+    PyInterpreterState *interp = _PyInterpreterState_GET();
+    struct _Py_unicode_state *state = &interp->unicode;
+    if (state->interned == NULL) {
+        state->interned = PyDict_New();
+        if (state->interned == NULL) {
             PyErr_Clear(); /* Don't leave an exception */
             return;
         }
@@ -15589,7 +15574,7 @@ PyUnicode_InternInPlace(PyObject **p)
 
     PyObject *t;
     Py_ALLOW_RECURSION
-    t = PyDict_SetDefault(interned, s, s);
+    t = PyDict_SetDefault(state->interned, s, s);
     Py_END_ALLOW_RECURSION
 
     if (t == NULL) {
@@ -15607,7 +15592,6 @@ PyUnicode_InternInPlace(PyObject **p)
        The deallocator will take care of this */
     Py_SET_REFCNT(s, Py_REFCNT(s) - 2);
     _PyUnicode_STATE(s).interned = SSTATE_INTERNED_MORTAL;
-#endif
 }
 
 void
@@ -15631,14 +15615,16 @@ PyUnicode_InternFromString(const char *cp)
 }
 
 
-#if defined(WITH_VALGRIND) || defined(__INSURE__)
 static void
-unicode_release_interned(void)
+unicode_release_interned(PyThreadState *tstate)
 {
-    if (interned == NULL || !PyDict_Check(interned)) {
+    struct _Py_unicode_state *state = &tstate->interp->unicode;
+    if (state->interned == NULL) {
         return;
     }
-    PyObject *keys = PyDict_Keys(interned);
+    assert(PyDict_Check(state->interned));
+
+    PyObject *keys = PyDict_Keys(state->interned);
     if (keys == NULL || !PyList_Check(keys)) {
         PyErr_Clear();
         return;
@@ -15687,10 +15673,9 @@ unicode_release_interned(void)
             "mortal/immortal\n", mortal_size, immortal_size);
 #endif
     Py_DECREF(keys);
-    PyDict_Clear(interned);
-    Py_CLEAR(interned);
+    PyDict_Clear(state->interned);
+    Py_CLEAR(state->interned);
 }
-#endif
 
 
 /********************* Unicode Iterator **************************/
@@ -16188,9 +16173,14 @@ _PyUnicode_Fini(PyThreadState *tstate)
          * trade off slower shutdown for less distraction in the memory
          * reports.  -baw
          */
-        unicode_release_interned();
+        unicode_release_interned(tstate);
 #endif /* __INSURE__ */
+    }
+    else {
+        unicode_release_interned(tstate);
+    }
 
+    if (_Py_IsMainInterpreter(tstate)) {
         Py_CLEAR(unicode_empty);
 
 #ifdef LATIN1_SINGLETONS
