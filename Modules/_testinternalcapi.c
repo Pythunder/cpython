@@ -194,7 +194,7 @@ test_hashtable(PyObject *self, PyObject *Py_UNUSED(args))
 
 
 static PyObject*
-test_atomic_funcs(PyObject *self, PyObject *Py_UNUSED(args))
+test_atomic_func(PyObject *self, PyObject *Py_UNUSED(args))
 {
     // Test _Py_atomic_int_get() and _Py_atomic_int_get()
     int var = 1;
@@ -210,7 +210,7 @@ static PyMethodDef TestMethods[] = {
     {"test_bswap", test_bswap, METH_NOARGS},
     {"test_popcount", test_popcount, METH_NOARGS},
     {"test_hashtable", test_hashtable, METH_NOARGS},
-    {"test_atomic_funcs", test_atomic_funcs, METH_NOARGS},
+    {"test_atomic_func", test_atomic_func, METH_NOARGS},
     {NULL, NULL} /* sentinel */
 };
 
