@@ -11,8 +11,8 @@ extern "C" {
 #include "dynamic_annotations.h"   /* _Py_ANNOTATE_MEMORY_ORDER */
 #include "pyconfig.h"
 
-#if defined(HAVE_STD_ATOMIC)
-#include <stdatomic.h>
+#ifdef HAVE_STD_ATOMIC
+#  include <stdatomic.h>
 #endif
 
 
