@@ -3,8 +3,8 @@
 
    _Py_atomic_int_get() uses __ATOMIC_SEQ_CST memory order.
 */
-#ifndef Py_ATOMIC_FUNCS_H
-#define Py_ATOMIC_FUNCS_H
+#ifndef Py_ATOMIC_FUNC_H
+#define Py_ATOMIC_FUNC_H
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -62,4 +62,4 @@ static inline void _Py_atomic_int_set(volatile int *var, int value)
 #ifdef __cplusplus
 }
 #endif
-#endif  /* Py_ATOMIC_FUNCS_H */
+#endif  /* Py_ATOMIC_FUNC_H */
