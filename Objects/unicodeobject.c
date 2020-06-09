@@ -40,6 +40,7 @@ OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 #define PY_SSIZE_T_CLEAN
 #include "Python.h"
+#include "pycore_atomic_func.h"    // _Py_atomic_int_get()
 #include "pycore_abstract.h"       // _PyIndex_Check()
 #include "pycore_bytes_methods.h"
 #include "pycore_fileutils.h"
@@ -2276,25 +2277,23 @@ _PyUnicode_FromId(_Py_Identifier *id)
     PyInterpreterState *interp = _PyInterpreterState_GET();
     struct _Py_unicode_ids *ids = &interp->unicode.ids;
 
-    // Copy the index since _Py_Identifier.index is declared as volatile
-    Py_ssize_t index = id->index;
+    int index = _Py_atomic_int_get(&id->index);
     if (index < 0) {
         struct _Py_unicode_runtime_ids *rt_ids = &interp->runtime->unicode_ids;
 
         PyThread_acquire_lock(rt_ids->lock, WAIT_LOCK);
         // Check again to detect concurrent access. Another thread can have
         // initialized the index while this thread waited for the lock.
-        //
-        // _Py_Identifier.index is declared with volatile keyword to ensure
-        // that the index is read again here (prevent compiler optimization).
-        // Use volatile instead of an atomic variable since pycore_atomic.h is
-        // an internal header file, and stdatomic.h is not yet widely adopted.
-        if (id->index < 0) {
-            id->index = rt_ids->next_index;
+        index = _Py_atomic_int_get(&id->index);
+        if (index < 0) {
+            if (rt_ids->next_index > INT_MAX) {
+                Py_FatalError("_Py_Identifier index overflow");
+            }
+            index = rt_ids->next_index;
             rt_ids->next_index++;
+            _Py_atomic_int_set(&id->index, index);
         }
         PyThread_release_lock(rt_ids->lock);
-        index = id->index;
     }
     assert(index >= 0);
 

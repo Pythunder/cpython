@@ -40,10 +40,10 @@ PyAPI_FUNC(Py_ssize_t) _Py_GetRefTotal(void);
 */
 typedef struct _Py_Identifier {
     const char* string;
-    // Index in PyInterpreterState.unicode.ids.array.
-    // It must be unique for the whole process.
-    // See _PyUnicode_FromId() for the rationale on the volatile keyword.
-    volatile Py_ssize_t index;
+    // Index in PyInterpreterState.unicode.ids.array. It must be unique for the
+    // whole process. It must be get with _Py_atomic_int_get() and set with
+    // _Py_atomic_int_set().
+    int index;
 } _Py_Identifier;
 
 #define _Py_static_string_init(value) { .string = value, .index = -1 }
