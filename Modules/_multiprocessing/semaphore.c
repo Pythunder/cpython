@@ -76,7 +76,7 @@ semlock_acquire(SemLockObject *self, PyObject *args, PyObject *kwds)
     /* calculate timeout */
     if (!blocking) {
         full_msecs = 0;
-    } else if (timeout_obj == Py_None) {
+    } else if (Py_IS_NONE(timeout_obj)) {
         full_msecs = INFINITE;
     } else {
         timeout = PyFloat_AsDouble(timeout_obj);
@@ -282,7 +282,7 @@ semlock_acquire(SemLockObject *self, PyObject *args, PyObject *kwds)
         Py_RETURN_TRUE;
     }
 
-    int use_deadline = (timeout_obj != Py_None);
+    int use_deadline = (!Py_IS_NONE(timeout_obj));
     if (use_deadline) {
         double timeout = PyFloat_AsDouble(timeout_obj);
         if (PyErr_Occurred()) {

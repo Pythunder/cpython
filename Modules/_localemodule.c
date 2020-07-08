@@ -647,7 +647,7 @@ PyIntl_bindtextdomain(PyObject* self, PyObject*args)
                         "domain must be a non-empty string");
         return 0;
     }
-    if (dirname_obj != Py_None) {
+    if (!Py_IS_NONE(dirname_obj)) {
         if (!PyUnicode_FSConverter(dirname_obj, &dirname_bytes))
             return NULL;
         dirname = PyBytes_AsString(dirname_bytes);

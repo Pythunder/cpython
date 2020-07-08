@@ -370,7 +370,7 @@ _io_FileIO___init___impl(fileio *self, PyObject *nameobj, const char *mode,
         }
 
         errno = 0;
-        if (opener == Py_None) {
+        if (Py_IS_NONE(opener)) {
             do {
                 Py_BEGIN_ALLOW_THREADS
 #ifdef MS_WINDOWS
@@ -998,7 +998,7 @@ _io_FileIO_truncate_impl(fileio *self, PyObject *posobj)
     if (!self->writable)
         return err_mode("writing");
 
-    if (posobj == Py_None) {
+    if (Py_IS_NONE(posobj)) {
         /* Get the current position. */
         posobj = portable_lseek(self, NULL, 1, false);
         if (posobj == NULL)

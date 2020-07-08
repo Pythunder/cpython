@@ -183,7 +183,7 @@ read_init_file(PyObject *self, PyObject *args)
     PyObject *filename_obj = Py_None, *filename_bytes;
     if (!PyArg_ParseTuple(args, "|O:read_init_file", &filename_obj))
         return NULL;
-    if (filename_obj != Py_None) {
+    if (!Py_IS_NONE(filename_obj)) {
         if (!PyUnicode_FSConverter(filename_obj, &filename_bytes))
             return NULL;
         errno = rl_read_init_file(PyBytes_AsString(filename_bytes));
@@ -209,7 +209,7 @@ read_history_file(PyObject *self, PyObject *args)
     PyObject *filename_obj = Py_None, *filename_bytes;
     if (!PyArg_ParseTuple(args, "|O:read_history_file", &filename_obj))
         return NULL;
-    if (filename_obj != Py_None) {
+    if (!Py_IS_NONE(filename_obj)) {
         if (!PyUnicode_FSConverter(filename_obj, &filename_bytes))
             return NULL;
         errno = read_history(PyBytes_AsString(filename_bytes));
@@ -238,7 +238,7 @@ write_history_file(PyObject *self, PyObject *args)
     int err;
     if (!PyArg_ParseTuple(args, "|O:write_history_file", &filename_obj))
         return NULL;
-    if (filename_obj != Py_None) {
+    if (!Py_IS_NONE(filename_obj)) {
         if (!PyUnicode_FSConverter(filename_obj, &filename_bytes))
             return NULL;
         filename = PyBytes_AsString(filename_bytes);
@@ -274,7 +274,7 @@ append_history_file(PyObject *self, PyObject *args)
     int err;
     if (!PyArg_ParseTuple(args, "i|O:append_history_file", &nelements, &filename_obj))
         return NULL;
-    if (filename_obj != Py_None) {
+    if (!Py_IS_NONE(filename_obj)) {
         if (!PyUnicode_FSConverter(filename_obj, &filename_bytes))
             return NULL;
         filename = PyBytes_AsString(filename_bytes);
@@ -342,7 +342,7 @@ set_hook(const char *funcname, PyObject **hook_var, PyObject *args)
     PyOS_snprintf(buf, sizeof(buf), "|O:set_%.50s", funcname);
     if (!PyArg_ParseTuple(args, buf, &function))
         return NULL;
-    if (function == Py_None) {
+    if (Py_IS_NONE(function)) {
         Py_CLEAR(*hook_var);
     }
     else if (PyCallable_Check(function)) {
@@ -872,7 +872,7 @@ on_hook(PyObject *func)
         r = PyObject_CallNoArgs(func);
         if (r == NULL)
             goto error;
-        if (r == Py_None)
+        if (Py_IS_NONE(r))
             result = 0;
         else {
             result = _PyLong_AsInt(r);
@@ -947,7 +947,7 @@ on_completion_display_matches_hook(char **matches,
     m=NULL;
 
     if (r == NULL ||
-        (r != Py_None && PyLong_AsLong(r) == -1 && PyErr_Occurred())) {
+        (!Py_IS_NONE(r) && PyLong_AsLong(r) == -1 && PyErr_Occurred())) {
         goto error;
     }
     Py_CLEAR(r);
@@ -997,7 +997,7 @@ on_completion(const char *text, int state)
         r = PyObject_CallFunction(readlinestate_global->completer, "Ni", t, state);
         if (r == NULL)
             goto error;
-        if (r == Py_None) {
+        if (Py_IS_NONE(r)) {
             result = NULL;
         }
         else {

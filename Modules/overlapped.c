@@ -376,7 +376,7 @@ overlapped_CreateEvent(PyObject *self, PyObject *args)
                           &InitialState, &Name))
         return NULL;
 
-    if (EventAttributes != Py_None) {
+    if (!Py_IS_NONE(EventAttributes)) {
         PyErr_SetString(PyExc_ValueError, "EventAttributes must be None");
         return NULL;
     }

@@ -1269,7 +1269,7 @@ bytearray_translate_impl(PyByteArrayObject *self, PyObject *table,
     int trans_table[256];
     Py_buffer vtable, vdel;
 
-    if (table == Py_None) {
+    if (Py_IS_NONE(table)) {
         table_chars = NULL;
         table = NULL;
     } else if (PyObject_GetBuffer(table, &vtable, PyBUF_SIMPLE) != 0) {
@@ -1422,7 +1422,7 @@ bytearray_split_impl(PyByteArrayObject *self, PyObject *sep,
     if (maxsplit < 0)
         maxsplit = PY_SSIZE_T_MAX;
 
-    if (sep == Py_None)
+    if (Py_IS_NONE(sep))
         return stringlib_split_whitespace((PyObject*) self, s, len, maxsplit);
 
     if (PyObject_GetBuffer(sep, &vsub, PyBUF_SIMPLE) != 0)
@@ -1533,7 +1533,7 @@ bytearray_rsplit_impl(PyByteArrayObject *self, PyObject *sep,
     if (maxsplit < 0)
         maxsplit = PY_SSIZE_T_MAX;
 
-    if (sep == Py_None)
+    if (Py_IS_NONE(sep))
         return stringlib_rsplit_whitespace((PyObject*) self, s, len, maxsplit);
 
     if (PyObject_GetBuffer(sep, &vsub, PyBUF_SIMPLE) != 0)
@@ -1874,7 +1874,7 @@ bytearray_strip_impl(PyByteArrayObject *self, PyObject *bytes)
     const char *bytesptr;
     Py_buffer vbytes;
 
-    if (bytes == Py_None) {
+    if (Py_IS_NONE(bytes)) {
         bytesptr = "\t\n\r\f\v ";
         byteslen = 6;
     }
@@ -1891,7 +1891,7 @@ bytearray_strip_impl(PyByteArrayObject *self, PyObject *bytes)
         right = left;
     else
         right = rstrip_helper(myptr, mysize, bytesptr, byteslen);
-    if (bytes != Py_None)
+    if (!Py_IS_NONE(bytes))
         PyBuffer_Release(&vbytes);
     return PyByteArray_FromStringAndSize(myptr + left, right - left);
 }
@@ -1916,7 +1916,7 @@ bytearray_lstrip_impl(PyByteArrayObject *self, PyObject *bytes)
     const char *bytesptr;
     Py_buffer vbytes;
 
-    if (bytes == Py_None) {
+    if (Py_IS_NONE(bytes)) {
         bytesptr = "\t\n\r\f\v ";
         byteslen = 6;
     }
@@ -1930,7 +1930,7 @@ bytearray_lstrip_impl(PyByteArrayObject *self, PyObject *bytes)
     mysize = Py_SIZE(self);
     left = lstrip_helper(myptr, mysize, bytesptr, byteslen);
     right = mysize;
-    if (bytes != Py_None)
+    if (!Py_IS_NONE(bytes))
         PyBuffer_Release(&vbytes);
     return PyByteArray_FromStringAndSize(myptr + left, right - left);
 }
@@ -1955,7 +1955,7 @@ bytearray_rstrip_impl(PyByteArrayObject *self, PyObject *bytes)
     const char *bytesptr;
     Py_buffer vbytes;
 
-    if (bytes == Py_None) {
+    if (Py_IS_NONE(bytes)) {
         bytesptr = "\t\n\r\f\v ";
         byteslen = 6;
     }
@@ -1968,7 +1968,7 @@ bytearray_rstrip_impl(PyByteArrayObject *self, PyObject *bytes)
     myptr = PyByteArray_AS_STRING(self);
     mysize = Py_SIZE(self);
     right = rstrip_helper(myptr, mysize, bytesptr, byteslen);
-    if (bytes != Py_None)
+    if (!Py_IS_NONE(bytes))
         PyBuffer_Release(&vbytes);
     return PyByteArray_FromStringAndSize(myptr, right);
 }

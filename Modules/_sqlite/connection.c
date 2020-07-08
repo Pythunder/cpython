@@ -218,7 +218,7 @@ void pysqlite_do_all_statements(pysqlite_Connection* self, int action, int reset
     for (i = 0; i < PyList_Size(self->statements); i++) {
         weakref = PyList_GetItem(self->statements, i);
         statement = PyWeakref_GetObject(weakref);
-        if (statement != Py_None) {
+        if (!Py_IS_NONE(statement)) {
             Py_INCREF(statement);
             if (action == ACTION_RESET) {
                 (void)pysqlite_statement_reset((pysqlite_Statement*)statement);
@@ -233,7 +233,7 @@ void pysqlite_do_all_statements(pysqlite_Connection* self, int action, int reset
         for (i = 0; i < PyList_Size(self->cursors); i++) {
             weakref = PyList_GetItem(self->cursors, i);
             cursor = (pysqlite_Cursor*)PyWeakref_GetObject(weakref);
-            if ((PyObject*)cursor != Py_None) {
+            if (!Py_IS_NONE((PyObject*)cursor)) {
                 cursor->reset = 1;
             }
         }
@@ -319,7 +319,7 @@ PyObject* pysqlite_connection_cursor(pysqlite_Connection* self, PyObject* args, 
 
     _pysqlite_drop_unused_cursor_references(self);
 
-    if (cursor && self->row_factory != Py_None) {
+    if (cursor && !Py_IS_NONE(self->row_factory)) {
         Py_INCREF(self->row_factory);
         Py_XSETREF(((pysqlite_Cursor *)cursor)->row_factory, self->row_factory);
     }
@@ -495,7 +495,7 @@ error:
 static int
 _pysqlite_set_result(sqlite3_context* context, PyObject* py_val)
 {
-    if (py_val == Py_None) {
+    if (Py_IS_NONE(py_val)) {
         sqlite3_result_null(context);
     } else if (PyLong_Check(py_val)) {
         sqlite_int64 value = _pysqlite_long_as_int64(py_val);
@@ -760,7 +760,7 @@ static void _pysqlite_drop_unused_statement_references(pysqlite_Connection* self
 
     for (i = 0; i < PyList_Size(self->statements); i++) {
         weakref = PyList_GetItem(self->statements, i);
-        if (PyWeakref_GetObject(weakref) != Py_None) {
+        if (!Py_IS_NONE(PyWeakref_GetObject(weakref))) {
             if (PyList_Append(new_list, weakref) != 0) {
                 Py_DECREF(new_list);
                 return;
@@ -791,7 +791,7 @@ static void _pysqlite_drop_unused_cursor_references(pysqlite_Connection* self)
 
     for (i = 0; i < PyList_Size(self->cursors); i++) {
         weakref = PyList_GetItem(self->cursors, i);
-        if (PyWeakref_GetObject(weakref) != Py_None) {
+        if (!Py_IS_NONE(PyWeakref_GetObject(weakref))) {
             if (PyList_Append(new_list, weakref) != 0) {
                 Py_DECREF(new_list);
                 return;
@@ -1034,7 +1034,7 @@ static PyObject* pysqlite_connection_set_progress_handler(pysqlite_Connection* s
         return NULL;
     }
 
-    if (progress_handler == Py_None) {
+    if (Py_IS_NONE(progress_handler)) {
         /* None clears the progress handler previously set */
         sqlite3_progress_handler(self->db, 0, 0, (void*)0);
         Py_XSETREF(self->function_pinboard_progress_handler, NULL);
@@ -1061,7 +1061,7 @@ static PyObject* pysqlite_connection_set_trace_callback(pysqlite_Connection* sel
         return NULL;
     }
 
-    if (trace_callback == Py_None) {
+    if (Py_IS_NONE(trace_callback)) {
         /* None clears the trace callback previously set */
         sqlite3_trace(self->db, 0, (void*)0);
         Py_XSETREF(self->function_pinboard_trace_callback, NULL);
@@ -1170,7 +1170,7 @@ pysqlite_connection_set_isolation_level(pysqlite_Connection* self, PyObject* iso
         PyErr_SetString(PyExc_AttributeError, "cannot delete attribute");
         return -1;
     }
-    if (isolation_level == Py_None) {
+    if (Py_IS_NONE(isolation_level)) {
         PyObject *res = pysqlite_connection_commit(self, NULL);
         if (!res) {
             return -1;
@@ -1532,7 +1532,7 @@ pysqlite_connection_backup(pysqlite_Connection *self, PyObject *args, PyObject *
     }
 #endif
 
-    if (progress != Py_None && !PyCallable_Check(progress)) {
+    if (!Py_IS_NONE(progress) && !PyCallable_Check(progress)) {
         PyErr_SetString(PyExc_TypeError, "progress argument must be a callable");
         return NULL;
     }
@@ -1553,7 +1553,7 @@ pysqlite_connection_backup(pysqlite_Connection *self, PyObject *args, PyObject *
             rc = sqlite3_backup_step(bck_handle, pages);
             Py_END_ALLOW_THREADS
 
-            if (progress != Py_None) {
+            if (!Py_IS_NONE(progress)) {
                 PyObject *res;
 
                 res = PyObject_CallFunction(progress, "iii", rc,
@@ -1681,12 +1681,12 @@ pysqlite_connection_create_collation(pysqlite_Connection* self, PyObject* args)
     if (!uppercase_name_str)
         goto finally;
 
-    if (callable != Py_None && !PyCallable_Check(callable)) {
+    if (!Py_IS_NONE(callable) && !PyCallable_Check(callable)) {
         PyErr_SetString(PyExc_TypeError, "parameter must be callable");
         goto finally;
     }
 
-    if (callable != Py_None) {
+    if (!Py_IS_NONE(callable)) {
         if (PyDict_SetItem(self->collations, uppercase_name, callable) == -1)
             goto finally;
     } else {
@@ -1697,8 +1697,8 @@ pysqlite_connection_create_collation(pysqlite_Connection* self, PyObject* args)
     rc = sqlite3_create_collation(self->db,
                                   uppercase_name_str,
                                   SQLITE_UTF8,
-                                  (callable != Py_None) ? callable : NULL,
-                                  (callable != Py_None) ? pysqlite_collation_callback : NULL);
+                                  (!Py_IS_NONE(callable)) ? callable : NULL,
+                                  (!Py_IS_NONE(callable)) ? pysqlite_collation_callback : NULL);
     if (rc != SQLITE_OK) {
         PyDict_DelItem(self->collations, uppercase_name);
         _pysqlite_seterror(self->db, NULL);
@@ -1740,7 +1740,7 @@ pysqlite_connection_exit(pysqlite_Connection* self, PyObject* args)
         return NULL;
     }
 
-    if (exc_type == Py_None && exc_value == Py_None && exc_tb == Py_None) {
+    if (Py_IS_NONE(exc_type) && Py_IS_NONE(exc_value) && Py_IS_NONE(exc_tb)) {
         method_name = "commit";
     } else {
         method_name = "rollback";

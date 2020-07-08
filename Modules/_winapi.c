@@ -764,7 +764,7 @@ gethandle(PyObject* obj, const char* name)
         PyErr_Clear(); /* FIXME: propagate error? */
         return NULL;
     }
-    if (value == Py_None)
+    if (Py_IS_NONE(value))
         ret = NULL;
     else
         ret = PYNUM_TO_HANDLE(value);
@@ -889,7 +889,7 @@ gethandlelist(PyObject *mapping, const char *name, Py_ssize_t *size)
         return NULL;
     }
 
-    if (value == Py_None) {
+    if (Py_IS_NONE(value)) {
         goto cleanup;
     }
 
@@ -958,7 +958,7 @@ getattributelist(PyObject *obj, const char *name, AttributeList *attribute_list)
         return 0;
     }
 
-    if (value == Py_None) {
+    if (Py_IS_NONE(value)) {
         ret = 0;
         goto cleanup;
     }
@@ -1100,7 +1100,7 @@ _winapi_CreateProcess_impl(PyObject *module,
     if (PyErr_Occurred())
         goto cleanup;
 
-    if (env_mapping != Py_None) {
+    if (!Py_IS_NONE(env_mapping)) {
         wenvironment = getenvironment(env_mapping);
         if (wenvironment == NULL) {
             goto cleanup;
@@ -1117,7 +1117,7 @@ _winapi_CreateProcess_impl(PyObject *module,
             goto cleanup;
         }
     }
-    else if (command_line != Py_None) {
+    else if (!Py_IS_NONE(command_line)) {
         PyErr_Format(PyExc_TypeError,
                      "CreateProcess() argument 2 must be str or None, not %s",
                      Py_TYPE(command_line)->tp_name);
@@ -1586,7 +1586,7 @@ _winapi_SetNamedPipeHandleState_impl(PyObject *module, HANDLE named_pipe,
     BOOL b;
 
     for (i = 0 ; i < 3 ; i++) {
-        if (oArgs[i] != Py_None) {
+        if (!Py_IS_NONE(oArgs[i])) {
             dwArgs[i] = PyLong_AsUnsignedLongMask(oArgs[i]);
             if (PyErr_Occurred())
                 return NULL;

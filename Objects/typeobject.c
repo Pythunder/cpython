@@ -298,7 +298,7 @@ PyType_Modified(PyTypeObject *type)
         while (PyDict_Next(raw, &i, NULL, &ref)) {
             assert(PyWeakref_CheckRef(ref));
             ref = PyWeakref_GET_OBJECT(ref);
-            if (ref != Py_None) {
+            if (!Py_IS_NONE(ref)) {
                 PyType_Modified((PyTypeObject *)ref);
             }
         }
@@ -3268,7 +3268,7 @@ _PyType_Lookup(PyTypeObject *type, PyObject *name)
         Py_INCREF(name);
         assert(((PyASCIIObject *)(name))->hash != -1);
 #if MCACHE_STATS
-        if (method_cache[h].name != Py_None && method_cache[h].name != name)
+        if (method_cache[h].!Py_IS_NONE(name) && method_cache[h].name != name)
             method_cache_collisions++;
         else
             method_cache_misses++;
@@ -3513,7 +3513,7 @@ type___subclasses___impl(PyTypeObject *self)
     while (PyDict_Next(raw, &i, NULL, &ref)) {
         assert(PyWeakref_CheckRef(ref));
         ref = PyWeakref_GET_OBJECT(ref);
-        if (ref != Py_None) {
+        if (!Py_IS_NONE(ref)) {
             if (PyList_Append(list, ref) < 0) {
                 Py_DECREF(list);
                 return NULL;
@@ -4264,7 +4264,7 @@ _PyType_GetSlotNames(PyTypeObject *cls)
     /* Get the slot names from the cache in the class if possible. */
     slotnames = _PyDict_GetItemIdWithError(cls->tp_dict, &PyId___slotnames__);
     if (slotnames != NULL) {
-        if (slotnames != Py_None && !PyList_Check(slotnames)) {
+        if (!Py_IS_NONE(slotnames) && !PyList_Check(slotnames)) {
             PyErr_Format(PyExc_TypeError,
                          "%.200s.__slotnames__ should be a list or None, "
                          "not %.200s",
@@ -4294,7 +4294,7 @@ _PyType_GetSlotNames(PyTypeObject *cls)
     if (slotnames == NULL)
         return NULL;
 
-    if (slotnames != Py_None && !PyList_Check(slotnames)) {
+    if (!Py_IS_NONE(slotnames) && !PyList_Check(slotnames)) {
         PyErr_SetString(PyExc_TypeError,
                         "copyreg._slotnames didn't return a list or None");
         Py_DECREF(slotnames);
@@ -4347,14 +4347,14 @@ _PyObject_GetState(PyObject *obj, int required)
             return NULL;
         }
 
-        assert(slotnames == Py_None || PyList_Check(slotnames));
+        assert(Py_IS_NONE(slotnames) || PyList_Check(slotnames));
         if (required) {
             Py_ssize_t basicsize = PyBaseObject_Type.tp_basicsize;
             if (Py_TYPE(obj)->tp_dictoffset)
                 basicsize += sizeof(PyObject *);
             if (Py_TYPE(obj)->tp_weaklistoffset)
                 basicsize += sizeof(PyObject *);
-            if (slotnames != Py_None)
+            if (!Py_IS_NONE(slotnames))
                 basicsize += sizeof(PyObject *) * PyList_GET_SIZE(slotnames);
             if (Py_TYPE(obj)->tp_basicsize > basicsize) {
                 Py_DECREF(slotnames);
@@ -4366,7 +4366,7 @@ _PyObject_GetState(PyObject *obj, int required)
             }
         }
 
-        if (slotnames != Py_None && PyList_GET_SIZE(slotnames) > 0) {
+        if (!Py_IS_NONE(slotnames) && PyList_GET_SIZE(slotnames) > 0) {
             PyObject *slots;
             Py_ssize_t slotnames_size, i;
 
@@ -6102,9 +6102,9 @@ wrap_descr_get(PyObject *self, PyObject *args, void *wrapped)
 
     if (!PyArg_UnpackTuple(args, "", 1, 2, &obj, &type))
         return NULL;
-    if (obj == Py_None)
+    if (Py_IS_NONE(obj))
         obj = NULL;
-    if (type == Py_None)
+    if (Py_IS_NONE(type))
         type = NULL;
     if (type == NULL &&obj == NULL) {
         PyErr_SetString(PyExc_TypeError,
@@ -6428,7 +6428,7 @@ slot_sq_contains(PyObject *self, PyObject *value)
     _Py_IDENTIFIER(__contains__);
 
     func = lookup_maybe_method(self, &PyId___contains__, &unbound);
-    if (func == Py_None) {
+    if (Py_IS_NONE(func)) {
         Py_DECREF(func);
         PyErr_Format(PyExc_TypeError,
                      "'%.200s' object is not a container",
@@ -6495,7 +6495,7 @@ slot_nb_power(PyObject *self, PyObject *other, PyObject *modulus)
 {
     _Py_IDENTIFIER(__pow__);
 
-    if (modulus == Py_None)
+    if (Py_IS_NONE(modulus))
         return slot_nb_power_binary(self, other);
     /* Three-arg power doesn't use __rpow__.  But ternary_op
        can call this when the second argument's type uses
@@ -6637,7 +6637,7 @@ slot_tp_hash(PyObject *self)
 
     func = lookup_maybe_method(self, &PyId___hash__, &unbound);
 
-    if (func == Py_None) {
+    if (Py_IS_NONE(func)) {
         Py_DECREF(func);
         func = NULL;
     }
@@ -6837,7 +6837,7 @@ slot_tp_iter(PyObject *self)
     _Py_IDENTIFIER(__iter__);
 
     func = lookup_maybe_method(self, &PyId___iter__, &unbound);
-    if (func == Py_None) {
+    if (Py_IS_NONE(func)) {
         Py_DECREF(func);
         PyErr_Format(PyExc_TypeError,
                      "'%.200s' object is not iterable",
@@ -6938,7 +6938,7 @@ slot_tp_init(PyObject *self, PyObject *args, PyObject *kwds)
     Py_DECREF(meth);
     if (res == NULL)
         return -1;
-    if (res != Py_None) {
+    if (!Py_IS_NONE(res)) {
         PyErr_Format(PyExc_TypeError,
                      "__init__() should return None, not '%.200s'",
                      Py_TYPE(res)->tp_name);
@@ -7514,7 +7514,7 @@ update_one_slot(PyTypeObject *type, slotdef *p)
                sanity checks.  I'll buy the first person to
                point out a bug in this reasoning a beer. */
         }
-        else if (descr == Py_None &&
+        else if (Py_IS_NONE(descr) &&
                  ptr == (void**)&type->tp_hash) {
             /* We specifically allow __hash__ to be set to None
                to prevent inheritance of the default
@@ -7750,7 +7750,7 @@ recurse_down_subclasses(PyTypeObject *type, PyObject *name,
         assert(PyWeakref_CheckRef(ref));
         subclass = (PyTypeObject *)PyWeakref_GET_OBJECT(ref);
         assert(subclass != NULL);
-        if ((PyObject *)subclass == Py_None)
+        if (Py_IS_NONE((PyObject *)subclass))
             continue;
         assert(PyType_Check(subclass));
         /* Avoid recursing down into unaffected classes */
@@ -8031,7 +8031,7 @@ super_descr_get(PyObject *self, PyObject *obj, PyObject *type)
     superobject *su = (superobject *)self;
     superobject *newobj;
 
-    if (obj == NULL || obj == Py_None || su->obj != NULL) {
+    if (obj == NULL || Py_IS_NONE(obj) || su->obj != NULL) {
         /* Not binding to an object, or already bound */
         Py_INCREF(self);
         return self;
@@ -8170,7 +8170,7 @@ super_init(PyObject *self, PyObject *args, PyObject *kwds)
         }
     }
 
-    if (obj == Py_None)
+    if (Py_IS_NONE(obj))
         obj = NULL;
     if (obj != NULL) {
         obj_type = supercheck(type, obj);

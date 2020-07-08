@@ -2223,7 +2223,7 @@ main_loop:
                 retval = _PyGen_Send((PyGenObject *)receiver, v);
             } else {
                 _Py_IDENTIFIER(send);
-                if (v == Py_None)
+                if (Py_IS_NONE(v))
                     retval = Py_TYPE(receiver)->tp_iternext(receiver);
                 else
                     retval = _PyObject_CallMethodIdOneArg(receiver, &PyId_send, v);
@@ -3435,7 +3435,7 @@ main_loop:
             exc = TOP();
             val = SECOND();
             tb = THIRD();
-            assert(exc != Py_None);
+            assert(!Py_IS_NONE(exc));
             assert(!PyLong_Check(exc));
             exit_func = PEEK(7);
             PyObject *stack[4] = {NULL, exc, val, tb};
@@ -4446,7 +4446,7 @@ do_raise(PyThreadState *tstate, PyObject *exc, PyObject *cause)
         type = exc_info->exc_type;
         value = exc_info->exc_value;
         tb = exc_info->exc_traceback;
-        if (type == Py_None || type == NULL) {
+        if (Py_IS_NONE(type) || type == NULL) {
             _PyErr_SetString(tstate, PyExc_RuntimeError,
                              "No active exception to reraise");
             return 0;
@@ -4504,7 +4504,7 @@ do_raise(PyThreadState *tstate, PyObject *exc, PyObject *cause)
         else if (PyExceptionInstance_Check(cause)) {
             fixed_cause = cause;
         }
-        else if (cause == Py_None) {
+        else if (Py_IS_NONE(cause)) {
             Py_DECREF(cause);
             fixed_cause = NULL;
         }
@@ -5168,7 +5168,7 @@ int
 _PyEval_SliceIndex(PyObject *v, Py_ssize_t *pi)
 {
     PyThreadState *tstate = _PyThreadState_GET();
-    if (v != Py_None) {
+    if (!Py_IS_NONE(v)) {
         Py_ssize_t x;
         if (_PyIndex_Check(v)) {
             x = PyNumber_AsSsize_t(v, NULL);
