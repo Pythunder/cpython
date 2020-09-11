@@ -1010,7 +1010,7 @@ static PyGetSetDef ast_type_getsets[] = {
 };
 
 static PyTypeObject AST_type = {
-    PyVarObject_HEAD_INIT(&PyType_Type, 0)
+    PyVarObject_HEAD_INIT(NULL, 0)
     "ast.AST",
     sizeof(AST_object),
     0,
@@ -1193,6 +1193,7 @@ static int ast_init_state(astmodulestate *state)
 {
     if (state->initialized) return 1;
     if (init_identifiers(state) < 0) return 0;
+    Py_SET_TYPE(&AST_type, &PyType_Type);
     if (PyType_Ready(&AST_type) < 0) return -1;
     state->AST_type = (PyObject*)&AST_type;
     if (add_ast_fields(state) < 0) return 0;
