@@ -8,6 +8,7 @@
 
 typedef struct {
     int initialized;
+    // Borrowed reference to: &AST_type
     PyObject *AST_type;
     PyObject *Add_singleton;
     PyObject *Add_type;
@@ -225,7 +226,7 @@ typedef struct {
 
 
 // Forward declaration
-static int init_types(astmodulestate *state);
+static int ast_init_state(astmodulestate *state);
 
 // bpo-41194, bpo-41261, bpo-41631: The _ast module uses a global state.
 static astmodulestate global_ast_state = {0};
@@ -234,7 +235,7 @@ static astmodulestate*
 get_global_ast_state(void)
 {
     astmodulestate* state = &global_ast_state;
-    if (!init_types(state)) {
+    if (!ast_init_state(state)) {
         return NULL;
     }
     return state;
@@ -245,7 +246,7 @@ get_ast_state(PyObject* Py_UNUSED(module))
 {
     astmodulestate* state = get_global_ast_state();
     // get_ast_state() must only be called after _ast module is imported,
-    // and astmodule_exec() calls init_types()
+    // and astmodule_exec() calls ast_init_state()
     assert(state != NULL);
     return state;
 }
@@ -253,7 +254,6 @@ get_ast_state(PyObject* Py_UNUSED(module))
 void _PyAST_Fini(PyThreadState *tstate)
 {
     astmodulestate* state = &global_ast_state;
-    Py_CLEAR(state->AST_type);
     Py_CLEAR(state->Add_singleton);
     Py_CLEAR(state->Add_type);
     Py_CLEAR(state->And_singleton);
@@ -887,16 +887,12 @@ ast_dealloc(AST_object *self)
     PyTypeObject *tp = Py_TYPE(self);
     PyObject_GC_UnTrack(self);
     Py_CLEAR(self->dict);
-    freefunc free_func = PyType_GetSlot(tp, Py_tp_free);
-    assert(free_func != NULL);
-    free_func(self);
-    Py_DECREF(tp);
+    tp->tp_free(self);
 }
 
 static int
 ast_traverse(AST_object *self, visitproc visit, void *arg)
 {
-    Py_VISIT(Py_TYPE(self));
     Py_VISIT(self->dict);
     return 0;
 }
@@ -1002,10 +998,6 @@ ast_type_reduce(PyObject *self, PyObject *unused)
     return Py_BuildValue("O()", Py_TYPE(self));
 }
 
-static PyMemberDef ast_type_members[] = {
-    {"__dictoffset__", T_PYSSIZET, offsetof(AST_object, dict), READONLY},
-    {NULL}  /* Sentinel */
-};
 
 static PyMethodDef ast_type_methods[] = {
     {"__reduce__", ast_type_reduce, METH_NOARGS, NULL},
@@ -1017,28 +1009,24 @@ static PyGetSetDef ast_type_getsets[] = {
     {NULL}
 };
 
-static PyType_Slot AST_type_slots[] = {
-    {Py_tp_dealloc, ast_dealloc},
-    {Py_tp_getattro, PyObject_GenericGetAttr},
-    {Py_tp_setattro, PyObject_GenericSetAttr},
-    {Py_tp_traverse, ast_traverse},
-    {Py_tp_clear, ast_clear},
-    {Py_tp_members, ast_type_members},
-    {Py_tp_methods, ast_type_methods},
-    {Py_tp_getset, ast_type_getsets},
-    {Py_tp_init, ast_type_init},
-    {Py_tp_alloc, PyType_GenericAlloc},
-    {Py_tp_new, PyType_GenericNew},
-    {Py_tp_free, PyObject_GC_Del},
-    {0, 0},
-};
-
-static PyType_Spec AST_type_spec = {
+static PyTypeObject AST_type = {
+    PyVarObject_HEAD_INIT(&PyType_Type, 0)
     "ast.AST",
     sizeof(AST_object),
     0,
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC,
-    AST_type_slots
+    .tp_dealloc = (destructor)ast_dealloc,
+    .tp_getattro = PyObject_GenericGetAttr,
+    .tp_setattro = PyObject_GenericSetAttr, /* */
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC,
+    .tp_traverse = (traverseproc)ast_traverse,
+    .tp_clear = (inquiry)ast_clear,
+    .tp_methods  = ast_type_methods,
+    .tp_getset = ast_type_getsets,
+    .tp_dictoffset = offsetof(AST_object, dict),
+    .tp_init = (initproc)ast_type_init,
+    .tp_alloc = PyType_GenericAlloc,
+    .tp_new = PyType_GenericNew,
+    .tp_free = PyObject_GC_Del,
 };
 
 static PyObject *
@@ -1186,11 +1174,13 @@ static int obj2ast_int(astmodulestate* Py_UNUSED(state), PyObject* obj, int* out
 
 static int add_ast_fields(astmodulestate *state)
 {
-    PyObject *empty_tuple;
-    empty_tuple = PyTuple_New(0);
+    PyTypeObject *AST_type = (PyTypeObject *)state->AST_type;
+    PyObject *type_dict = AST_type->tp_dict;
+    assert(type_dict != NULL);
+    PyObject *empty_tuple = PyTuple_New(0);
     if (!empty_tuple ||
-        PyObject_SetAttrString(state->AST_type, "_fields", empty_tuple) < 0 ||
-        PyObject_SetAttrString(state->AST_type, "_attributes", empty_tuple) < 0) {
+        PyDict_SetItem(type_dict, state->_fields, empty_tuple) < 0 ||
+        PyDict_SetItem(type_dict, state->_attributes, empty_tuple) < 0) {
         Py_XDECREF(empty_tuple);
         return -1;
     }
@@ -1199,12 +1189,12 @@ static int add_ast_fields(astmodulestate *state)
 }
 
 
-static int init_types(astmodulestate *state)
+static int ast_init_state(astmodulestate *state)
 {
     if (state->initialized) return 1;
     if (init_identifiers(state) < 0) return 0;
-    state->AST_type = PyType_FromSpec(&AST_type_spec);
-    if (!state->AST_type) return 0;
+    if (PyType_Ready(&AST_type) < 0) return -1;
+    state->AST_type = (PyObject*)&AST_type;
     if (add_ast_fields(state) < 0) return 0;
     state->mod_type = make_type(state, "mod", state->AST_type, NULL, 0,
         "mod = Module(stmt* body, type_ignore* type_ignores)\n"
@@ -9634,13 +9624,14 @@ astmodule_exec(PyObject *m)
 {
     astmodulestate *state = get_ast_state(m);
 
-    if (!init_types(state)) {
-        return -1;
-    }
-    if (PyModule_AddObject(m, "AST", state->AST_type) < 0) {
+    if (!ast_init_state(state)) {
         return -1;
     }
     Py_INCREF(state->AST_type);
+    if (PyModule_AddObject(m, "AST", state->AST_type) < 0) {
+        Py_DECREF(state->AST_type);
+        return -1;
+    }
     if (PyModule_AddIntMacro(m, PyCF_ALLOW_TOP_LEVEL_AWAIT) < 0) {
         return -1;
     }

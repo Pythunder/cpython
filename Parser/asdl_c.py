@@ -664,16 +664,12 @@ ast_dealloc(AST_object *self)
     PyTypeObject *tp = Py_TYPE(self);
     PyObject_GC_UnTrack(self);
     Py_CLEAR(self->dict);
-    freefunc free_func = PyType_GetSlot(tp, Py_tp_free);
-    assert(free_func != NULL);
-    free_func(self);
-    Py_DECREF(tp);
+    tp->tp_free(self);
 }
 
 static int
 ast_traverse(AST_object *self, visitproc visit, void *arg)
 {
-    Py_VISIT(Py_TYPE(self));
     Py_VISIT(self->dict);
     return 0;
 }
@@ -779,10 +775,6 @@ ast_type_reduce(PyObject *self, PyObject *unused)
     return Py_BuildValue("O()", Py_TYPE(self));
 }
 
-static PyMemberDef ast_type_members[] = {
-    {"__dictoffset__", T_PYSSIZET, offsetof(AST_object, dict), READONLY},
-    {NULL}  /* Sentinel */
-};
 
 static PyMethodDef ast_type_methods[] = {
     {"__reduce__", ast_type_reduce, METH_NOARGS, NULL},
@@ -794,28 +786,24 @@ static PyGetSetDef ast_type_getsets[] = {
     {NULL}
 };
 
-static PyType_Slot AST_type_slots[] = {
-    {Py_tp_dealloc, ast_dealloc},
-    {Py_tp_getattro, PyObject_GenericGetAttr},
-    {Py_tp_setattro, PyObject_GenericSetAttr},
-    {Py_tp_traverse, ast_traverse},
-    {Py_tp_clear, ast_clear},
-    {Py_tp_members, ast_type_members},
-    {Py_tp_methods, ast_type_methods},
-    {Py_tp_getset, ast_type_getsets},
-    {Py_tp_init, ast_type_init},
-    {Py_tp_alloc, PyType_GenericAlloc},
-    {Py_tp_new, PyType_GenericNew},
-    {Py_tp_free, PyObject_GC_Del},
-    {0, 0},
-};
-
-static PyType_Spec AST_type_spec = {
+static PyTypeObject AST_type = {
+    PyVarObject_HEAD_INIT(&PyType_Type, 0)
     "ast.AST",
     sizeof(AST_object),
     0,
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC,
-    AST_type_slots
+    .tp_dealloc = (destructor)ast_dealloc,
+    .tp_getattro = PyObject_GenericGetAttr,
+    .tp_setattro = PyObject_GenericSetAttr, /* */
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC,
+    .tp_traverse = (traverseproc)ast_traverse,
+    .tp_clear = (inquiry)ast_clear,
+    .tp_methods  = ast_type_methods,
+    .tp_getset = ast_type_getsets,
+    .tp_dictoffset = offsetof(AST_object, dict),
+    .tp_init = (initproc)ast_type_init,
+    .tp_alloc = PyType_GenericAlloc,
+    .tp_new = PyType_GenericNew,
+    .tp_free = PyObject_GC_Del,
 };
 
 static PyObject *
@@ -963,11 +951,13 @@ static int obj2ast_int(astmodulestate* Py_UNUSED(state), PyObject* obj, int* out
 
 static int add_ast_fields(astmodulestate *state)
 {
-    PyObject *empty_tuple;
-    empty_tuple = PyTuple_New(0);
+    PyTypeObject *AST_type = (PyTypeObject *)state->AST_type;
+    PyObject *type_dict = AST_type->tp_dict;
+    assert(type_dict != NULL);
+    PyObject *empty_tuple = PyTuple_New(0);
     if (!empty_tuple ||
-        PyObject_SetAttrString(state->AST_type, "_fields", empty_tuple) < 0 ||
-        PyObject_SetAttrString(state->AST_type, "_attributes", empty_tuple) < 0) {
+        PyDict_SetItem(type_dict, state->_fields, empty_tuple) < 0 ||
+        PyDict_SetItem(type_dict, state->_attributes, empty_tuple) < 0) {
         Py_XDECREF(empty_tuple);
         return -1;
     }
@@ -977,12 +967,12 @@ static int add_ast_fields(astmodulestate *state)
 
 """, 0, reflow=False)
 
-        self.emit("static int init_types(astmodulestate *state)",0)
+        self.emit("static int ast_init_state(astmodulestate *state)",0)
         self.emit("{", 0)
         self.emit("if (state->initialized) return 1;", 1)
         self.emit("if (init_identifiers(state) < 0) return 0;", 1)
-        self.emit("state->AST_type = PyType_FromSpec(&AST_type_spec);", 1)
-        self.emit("if (!state->AST_type) return 0;", 1)
+        self.emit("if (PyType_Ready(&AST_type) < 0) return -1;", 1)
+        self.emit("state->AST_type = (PyObject*)&AST_type;", 1)
         self.emit("if (add_ast_fields(state) < 0) return 0;", 1)
         for dfn in mod.dfns:
             self.visit(dfn)
@@ -999,7 +989,6 @@ static int add_ast_fields(astmodulestate *state)
                         (name, name, fields, len(prod.fields)), 1)
         self.emit('%s);' % reflow_c_string(asdl_of(name, prod), 2), 2, reflow=False)
         self.emit("if (!state->%s_type) return 0;" % name, 1)
-        self.emit_type("AST_type")
         self.emit_type("%s_type" % name)
         if prod.attributes:
             self.emit("if (!add_attributes(state, state->%s_type, %s_attributes, %d)) return 0;" %
@@ -1059,13 +1048,14 @@ class ASTModuleVisitor(PickleVisitor):
         self.emit('astmodulestate *state = get_ast_state(m);', 1)
         self.emit("", 0)
 
-        self.emit("if (!init_types(state)) {", 1)
+        self.emit("if (!ast_init_state(state)) {", 1)
         self.emit("return -1;", 2)
         self.emit("}", 1)
+        self.emit('Py_INCREF(state->AST_type);', 1)
         self.emit('if (PyModule_AddObject(m, "AST", state->AST_type) < 0) {', 1)
+        self.emit('Py_DECREF(state->AST_type);', 2)
         self.emit('return -1;', 2)
         self.emit('}', 1)
-        self.emit('Py_INCREF(state->AST_type);', 1)
         self.emit('if (PyModule_AddIntMacro(m, PyCF_ALLOW_TOP_LEVEL_AWAIT) < 0) {', 1)
         self.emit("return -1;", 2)
         self.emit('}', 1)
@@ -1368,12 +1358,14 @@ def generate_module_def(f, mod):
     module_state = sorted(module_state)
     f.write('typedef struct {\n')
     f.write('    int initialized;\n')
+    f.write('    // Borrowed reference to: &AST_type\n')
+    f.write('    PyObject *AST_type;\n')
     for s in module_state:
         f.write('    PyObject *' + s + ';\n')
     f.write('} astmodulestate;\n\n')
     f.write("""
 // Forward declaration
-static int init_types(astmodulestate *state);
+static int ast_init_state(astmodulestate *state);
 
 // bpo-41194, bpo-41261, bpo-41631: The _ast module uses a global state.
 static astmodulestate global_ast_state = {0};
@@ -1382,7 +1374,7 @@ static astmodulestate*
 get_global_ast_state(void)
 {
     astmodulestate* state = &global_ast_state;
-    if (!init_types(state)) {
+    if (!ast_init_state(state)) {
         return NULL;
     }
     return state;
@@ -1393,7 +1385,7 @@ get_ast_state(PyObject* Py_UNUSED(module))
 {
     astmodulestate* state = get_global_ast_state();
     // get_ast_state() must only be called after _ast module is imported,
-    // and astmodule_exec() calls init_types()
+    // and astmodule_exec() calls ast_init_state()
     assert(state != NULL);
     return state;
 }
